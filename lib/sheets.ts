@@ -6,7 +6,6 @@ const SHEET_NAME = process.env.SHEET_NAME || '顧客データDB';
 const TOTAL_COLS = 17;
 
 // IS チーム転送先スプシ (架電部隊が見るシート)
-const IS_DEST_SS_ID = '1XrGfX7JMiGPpa2ICd1pWrkDrHvd4hFzZoIsdxzCvqas';
 const IS_DEST_SHEET_NAME = '顧客データDB';
 
 // 列定義（既存スプシのスキーマ厳守）
@@ -99,8 +98,8 @@ export async function findRowByPhone(phone: string): Promise<number> {
   return findPhoneRow(SPREADSHEET_ID, SHEET_NAME, phone);
 }
 
-async function findRowByPhoneInIS(phone: string): Promise<number> {
-  return findPhoneRow(IS_DEST_SS_ID, IS_DEST_SHEET_NAME, phone);
+async function findRowByPhoneInIS(spreadsheetId: string, phone: string): Promise<number> {
+  return findPhoneRow(spreadsheetId, IS_DEST_SHEET_NAME, phone);
 }
 
 // ============================================================
@@ -130,14 +129,19 @@ export async function transferToIS(
       return;
     }
 
+    const spreadsheetId = process.env.IS_SPREADSHEET_ID?.trim();
+    if (!spreadsheetId) {
+      throw new Error('IS_SPREADSHEET_ID が設定されていません');
+    }
+
     const sheets = sheetsClient();
 
     // ===== update モード: 既存行を探して M〜O だけ書き込み =====
     if (mode === 'update') {
-      const existingRow = await findRowByPhoneInIS(phone);
+      const existingRow = await findRowByPhoneInIS(spreadsheetId, phone);
       if (existingRow > 1) {
         await sheets.spreadsheets.values.update({
-          spreadsheetId: IS_DEST_SS_ID,
+          spreadsheetId,
           range: `${IS_DEST_SHEET_NAME}!M${existingRow}:O${existingRow}`,
           valueInputOption: 'USER_ENTERED',
           requestBody: {
@@ -157,7 +161,7 @@ export async function transferToIS(
 
     // ===== insert モード: 既存行があれば update へ転送 (重複防止) =====
     if (mode === 'insert') {
-      const existingRow = await findRowByPhoneInIS(phone);
+      const existingRow = await findRowByPhoneInIS(spreadsheetId, phone);
       if (existingRow > 1) {
         // 既に行がある = firstSubmit が2回呼ばれた or 同電話が再送信した
         // 重複行を作らず、面談日時だけ最新値で上書きする
@@ -165,7 +169,7 @@ export async function transferToIS(
           (data.interviewDateTime1 || data.interviewDateTime2 || data.interviewDateTime3);
         if (hasInterview) {
           await sheets.spreadsheets.values.update({
-            spreadsheetId: IS_DEST_SS_ID,
+            spreadsheetId,
             range: `${IS_DEST_SHEET_NAME}!M${existingRow}:O${existingRow}`,
             valueInputOption: 'USER_ENTERED',
             requestBody: {
@@ -188,7 +192,7 @@ export async function transferToIS(
 
     // 転送先の A列で実データ最終行を特定
     const aRes = await sheets.spreadsheets.values.get({
-      spreadsheetId: IS_DEST_SS_ID,
+      spreadsheetId,
       range: `${IS_DEST_SHEET_NAME}!A:A`,
     });
     const aValues = aRes.data.values || [];
@@ -204,7 +208,7 @@ export async function transferToIS(
 
     // 転送先タブの sheetId 取得
     const meta = await sheets.spreadsheets.get({
-      spreadsheetId: IS_DEST_SS_ID,
+      spreadsheetId,
       fields: 'sheets(properties(sheetId,title))',
     });
     const sheetMeta = (meta.data.sheets || []).find(
@@ -218,7 +222,7 @@ export async function transferToIS(
     // 挿入と値の書き込みを同一の原子的バッチにする。
     // 別API呼び出しだと、同時リクエストが同じ行番号へ上書きして顧客が消える。
     await sheets.spreadsheets.batchUpdate({
-      spreadsheetId: IS_DEST_SS_ID,
+      spreadsheetId,
       requestBody: { requests: insertRowRequests(sheetId, lastDataRow, buildRow(data, originalTimestamp)) },
     }, { retry: false });
 
