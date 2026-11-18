@@ -8,15 +8,15 @@ function load(file,google){
   const code=ts.transpileModule(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
   const module={exports:{}};
   const req=name=>name==='./google'?{sheetsClient:()=>google}:name==='./sheet-write'?load('lib/sheet-write.ts',google):require(name);
-  vm.runInNewContext(code,{module,exports:module.exports,require:req,process:{env:{SPREADSHEET_ID:'src'}},console:{log(){},warn(){},error(){}},setTimeout,Date});
+  vm.runInNewContext(code,{module,exports:module.exports,require:req,process:{env:{SPREADSHEET_ID:'src',IS_SPREADSHEET_ID:'dest'}},console:{log(){},warn(){},error(){}},setTimeout,Date});
   return module.exports;
 }
 const row=(phone,name='Name')=>['2026/10/13 12:00:00','','','','','',name,'2000-01-01','',phone,'','','','','','',''];
 function mockSheets(seed={}){
-  const ids={src:0,'1XrGfX7JMiGPpa2ICd1pWrkDrHvd4hFzZoIsdxzCvqas':1};
+  const ids={src:0,dest:1};
   const rows={src:[['header'],...(seed.src||[])],dest:[['header'],...(seed.dest||[])]};
   const calls=[];
-  const data=id=>rows[id==='src'?'src':'dest'];
+  const data=id=>rows[id];
   const api={spreadsheets:{
     get:async ({spreadsheetId})=>({data:{sheets:[{properties:{title:'顧客データDB',sheetId:ids[spreadsheetId]}}]}}),
     values:{
